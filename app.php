@@ -1,68 +1,139 @@
 <?php
 
-foreach (explode("\n", file_get_contents($argv[1])) as $row) {
+class CommisionsCalculator extends Transaction
+{
+    private $rates;
+    private $isEu;
+    private $transaction;
 
-    if (empty($row)) break;
-    $p = explode(",",$row);
-    $p2 = explode(':', $p[0]);
-    $value[0] = trim($p2[1], '"');
-    $p2 = explode(':', $p[1]);
-    $value[1] = trim($p2[1], '"');
-    $p2 = explode(':', $p[2]);
-    $value[2] = trim($p2[1], '"}');
 
-    $binResults = file_get_contents('https://lookup.binlist.net/' .$value[0]);
-    if (!$binResults)
-        die('error!');
-    $r = json_decode($binResults);
-    $isEu = isEu($r->country->alpha2);
-
-    $rate = @json_decode(file_get_contents('https://api.exchangeratesapi.io/latest'), true)['rates'][$value[2]];
-    if ($value[2] == 'EUR' or $rate == 0) {
-        $amntFixed = $value[1];
-    }
-    if ($value[2] != 'EUR' or $rate > 0) {
-        $amntFixed = $value[1] / $rate;
+    public function __construct()//$transaction)
+    {
+        // $this->splitedParams($transaction);
+        // $this->rates = $this->getRates();
     }
 
-    echo $amntFixed * ($isEu == 'yes' ? 0.01 : 0.02);
-    print "\n";
+
+    public function process($transaction)
+    {
+        $this->extractTransactionValues($transaction)
+            ->getCountry()
+            ->getRates()
+        ;
+        // print_r($this); die();
+    }
+
+    protected function getCountry()
+    {
+        $binResults = file_get_contents(
+            'https://lookup.binlist.net/' .$this->transaction->bin
+        );
+        $json = json_decode($binResults);
+
+        $this->isEu($json->country->alpha2);
+        
+        return $this;
+    }
+    protected function getRates()
+    {
+        $r = @json_decode(
+            file_get_contents(
+                'https://api.exchangeratesapi.io/latest'),
+                true
+            )['rates'][$this->transaction->currency];
+        print_r($r); die();
+        $this->rates = $r;
+        return $this;
+    }
+
+
+    private function extractTransactionValues($transaction)
+    {
+        $transaction_jsn = json_decode($transaction, true);
+
+        if (isset($transaction_jsn)) {
+
+            $this->transaction = new Transaction();
+
+            foreach ($transaction_jsn as $key => $value) {
+
+                $this->transaction->$key = $value;
+            }
+        }
+        // print_r($this->transaction); die();
+        return $this;
+    }
+
+
+    private function isEu($countryCode)
+    {
+        $euCodes = [
+            'AT',
+            'BE',
+            'BG',
+            'CY',
+            'CZ',
+            'DE',
+            'DK',
+            'EE',
+            'ES',
+            'FI',
+            'FR',
+            'GR',
+            'HR',
+            'HU',
+            'IE',
+            'IT',
+            'LT',
+            'LU',
+            'LV',
+            'MT',
+            'NL',
+            'PO',
+            'PT',
+            'RO',
+            'SE',
+            'SI',
+            'SK',
+        ];
+
+        if (in_array($countryCode, $euCodes)) {
+
+            return 'yes';
+
+        } else {
+
+            return 'no';
+        }
+    }
 }
 
-function isEu($c) {
-    $result = false;
-    switch($c) {
-        case 'AT':
-        case 'BE':
-        case 'BG':
-        case 'CY':
-        case 'CZ':
-        case 'DE':
-        case 'DK':
-        case 'EE':
-        case 'ES':
-        case 'FI':
-        case 'FR':
-        case 'GR':
-        case 'HR':
-        case 'HU':
-        case 'IE':
-        case 'IT':
-        case 'LT':
-        case 'LU':
-        case 'LV':
-        case 'MT':
-        case 'NL':
-        case 'PO':
-        case 'PT':
-        case 'RO':
-        case 'SE':
-        case 'SI':
-        case 'SK':
-            $result = 'yes';
-            return $result;
-        default:
-            $result = 'no';
+
+class Transaction
+{
+    protected $bin;
+    protected $currency;
+    protected $country;
+
+    protected function setBin($bin)
+    {
+        $this->bin = $bin;
     }
-    return $result;
+
+    protected function setCurrency($currency)
+    {
+        $this->currency = $currency;
+    }
+
+    protected function setCountry($country)
+    {
+        $this->country = $country;
+    }
+}
+
+$client = new CommisionsCalculator();
+
+foreach (explode("\n", file_get_contents($argv[1])) as $row) {
+
+    $client->process($row);
 }
